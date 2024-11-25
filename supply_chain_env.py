@@ -1,7 +1,8 @@
 # supply_chain_env.py
+
+import numpy as np
 import gymnasium as gym
 from gymnasium import spaces
-import numpy as np
 
 class SupplyChainEnv(gym.Env):
     metadata = {'render.modes': ['human']}
@@ -18,35 +19,48 @@ class SupplyChainEnv(gym.Env):
         self.max_steps = max_steps
         
         # Define action and observation space
-        # Actions: reorder quantity (0 to max_order)
         self.action_space = spaces.Discrete(self.max_order + 1)
-        
-        # Observations: current inventory level (0 to max_inventory)
         self.observation_space = spaces.Box(low=0, high=self.max_inventory, shape=(1,), dtype=np.int32)
         
+        self.seed_value = None  # Track the current seed
         self.reset()
+
+    def seed(self, seed=None):
+        """Set the random seed for reproducibility."""
+        self.seed_value = seed
+        np.random.seed(self.seed_value)
+
+    def reset(self, seed=None, options=None):
+        """Reset the environment to its initial state."""
+        # Handle seed for reproducibility
+        super().reset(seed=seed)
+        if seed is not None:
+            self.seed(seed)
+        else:
+            np.random.seed(self.seed_value)
         
-    def reset(self):
         self.inventory_level = self.max_inventory // 2
         self.current_step = 0
         self.total_profit = 0
-        return np.array([self.inventory_level], dtype=np.int32)
-    
+        obs = np.array([self.inventory_level], dtype=np.int32)
+        info = {}
+        return obs, info  # Return obs and info
+
     def step(self, action):
-        # Ensure action is valid
+        """Step the environment with the given action."""
         action = int(action)
         if action < 0 or action > self.max_order:
             raise ValueError("Invalid action")
         
-        # Place order
+        # Apply the action
         order_quantity = action
         self.inventory_level += order_quantity
         ordering_cost = self.ordering_cost * order_quantity
         
-        # Random demand
+        # Generate random demand
         demand = np.random.randint(0, 20)
         
-        # Sales and update inventory
+        # Calculate sales and update inventory
         sales = min(self.inventory_level, demand)
         self.inventory_level -= sales
         
@@ -61,14 +75,17 @@ class SupplyChainEnv(gym.Env):
         profit = revenue - total_cost
         self.total_profit += profit
         
-        # Update step
+        # Update step count
         self.current_step += 1
-        done = self.current_step >= self.max_steps
         
-        # Observation
+        # Determine if the episode is done
+        terminated = self.current_step >= self.max_steps
+        truncated = False  # No explicit truncation condition
+
+        # Create observation
         obs = np.array([self.inventory_level], dtype=np.int32)
         
-        # Info dictionary for logging
+        # Info dictionary for additional debugging/metrics
         info = {
             'profit': profit,
             'total_profit': self.total_profit,
@@ -79,7 +96,7 @@ class SupplyChainEnv(gym.Env):
             'ordering_cost': ordering_cost
         }
         
-        return obs, profit, done, info
-    
+        return obs, profit, terminated, truncated, info
+
     def render(self, mode='human'):
         print(f"Step: {self.current_step}, Inventory Level: {self.inventory_level}, Total Profit: {self.total_profit}")
